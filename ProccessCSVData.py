@@ -12,8 +12,7 @@ BEFORE RUNNING:
 ## Constants
 #drift tube constants
 DRIFT_LENGTH = 25.05 # cm
-TEMPERATURE = 380 # K
-PRESSURE = 1.96 # Torr
+
 # Physical Constants
 BOLTZMANN_CONSTANT = 1.380649e-23  # J/K
 ELECTRON_CHARGE = 1.602176634e-19  # C
@@ -163,7 +162,7 @@ def plot_CCS_Distribution(arrivalTimeDistributions, driftTimePeaks, electricFeil
     if placedBoxes:
         ax.set_ylim(0, max(yTop, max(b[3] for b in placedBoxes) + gap))
     plt.legend()
-    plt.savefig(f"CCS_Distribution_{CHARGE_STATE}.png", dpi=300)
+    plt.savefig(f"{FILE_DIRECTORY}/plots/CCS_Distribution_{CHARGE_STATE}.png", dpi=300)
     return CCSDistribution, peakCCS
 
 def calculate_dead_time(driftTimePeaks, electricFeild):
@@ -187,7 +186,7 @@ def calculate_dead_time(driftTimePeaks, electricFeild):
     if RSquared < 0.999:  
         print("Warning: The linear fit may not be reliable. R-squared value is less than 0.999.")
         print("Removing outliers and recalculating the fit...")
-        while RSquared < 0.999 and len(driftTimePeaks) > 2:
+        while RSquared < 0.9995 and len(driftTimePeaks) > 2:
             # Calculate residuals and identify the index of the maximum residual
             residuals = driftTimePeaks - (m * InverseElectricFeild + b)
             max_residual_index = np.argmax(np.abs(residuals))
@@ -206,7 +205,7 @@ def calculate_dead_time(driftTimePeaks, electricFeild):
             RSquared = 1 - (ssRes / ssTot)
             print(f"Updated R-squared value after removing outlier: {RSquared}")
         deadTime = b  # use the intercept from the fit after outlier removal
-        if RSquared < 0.999 and len(driftTimePeaks) <= 2:
+        if RSquared < 0.9995 and len(driftTimePeaks) <= 2:
             print("Warning: Not enough data points to perform a reliable linear fit after removing outliers.")
     else:
         print("The linear fit is reliable. R-squared value is greater than or equal to 0.999.")
@@ -224,7 +223,7 @@ def calculate_dead_time(driftTimePeaks, electricFeild):
     handles += [blank, blank]
     labels += [f'Dead Time (y-intercept): {deadTime:.4f} ms', f'R-squared: {RSquared:.4f}']
     ax.legend(handles, labels, loc='lower right')
-    plt.savefig(f"DeadTime_Fit_{CHARGE_STATE}.png", dpi=300)
+    plt.savefig(f"{FILE_DIRECTORY}/plots/DeadTime_Fit_{CHARGE_STATE}.png", dpi=300)
     plt.close()
     return deadTime
 
@@ -342,17 +341,22 @@ def convert_scans_to_arrival_time_distribution(data):
 
 parser = argparse.ArgumentParser(description="Process CSV data for each charge state.")
 parser.add_argument("directory", type=str, help="Directory containing charge state subdirectories.")
-parser.add_argument("--MolecularMass", type=float, default=1062.0, help="Molecular mass of the sample in g/mol (default: 1062.0).")
+parser.add_argument("--molecularMass", type=float, default=1062.0, help="Molecular mass of the sample in g/mol (default: 1062.0).")
 parser.add_argument("--gas", type=str, default="He", help="Gas used in the drift tube (default: He).")
-parser.add_argument("--TransferDC", type=float, default=4.0, help="Transfer DC voltage (default: 4.0 V).")
-parser.add_argument("--Mode", type=str, default="V", help="Resolution of the mass spectrum (default: V) (Used only if the CSV files contain scan numbers instead of arrival times).")
-parser.add_argument("--HighMass", type=int, default=5000, help="High mass limit from mass spectrum (default: 5000) (Used only if the CSV files contain scan numbers instead of arrival times).")
+parser.add_argument("--pressure", type=float, default=1.96, help="pressure of the gas in Torr (default: 1.96).")
+parser.add_argument("--temperature", type=float, default=297.0, help="Temperature of the drift tube in K (default: 297.0).")
+parser.add_argument("--transferDC", type=float, default=4.0, help="Transfer DC voltage (default: 4.0 V).")
+parser.add_argument("--mode", type=str, default="V", help="Resolution of the mass spectrum (default: V) (Used only if the CSV files contain scan numbers instead of arrival times).")
+parser.add_argument("--highMass", type=int, default=5000, help="High mass limit from mass spectrum (default: 5000) (Used only if the CSV files contain scan numbers instead of arrival times).")
 args = parser.parse_args()
-SAMPLE_MASS = args.MolecularMass  # g/mol for the sample
+TEMPERATURE = args.temperature # K
+PRESSURE = args.pressure # Torr
+SAMPLE_MASS = args.molecularMass  # g/mol for the sample
 gasDict = {"He": 4.002602, "N2": 28.0134, "Ar": 39.948}
 GAS_MASS = gasDict[args.gas]  # g/mol for the selected gas
-TRANSFER_DC = args.TransferDC # V
-pusherIndex = f"{args.Mode} {args.HighMass}"
+TRANSFER_DC = args.transferDC # V
+FILE_DIRECTORY = args.directory
+pusherIndex = f"{args.mode} {args.highMass}"
 pusherTimeDict = {"V 600": 39.25,
                   "W 600": 75.25,
                   "V 1200": 54.25,
@@ -372,11 +376,14 @@ pusherTimeDict = {"V 600": 39.25,
                   }
 PUSHER_TIME = pusherTimeDict[pusherIndex]  # microseconds
 if __name__ == "__main__":
-    csv_directory = os.getcwd() + "/2026_11_09/Data_CSV/"
-    fileDirectories = os.listdir(csv_directory)
+    FILE_DIRECTORY = args.directory
+    fileDirectories = os.listdir(FILE_DIRECTORY)
+    if not os.path.exists(os.path.join(FILE_DIRECTORY, "plots")):
+        os.mkdir(os.path.join(FILE_DIRECTORY, "plots"))
     for fileDirectory in fileDirectories:
-        if os.path.isdir(os.path.join(csv_directory, fileDirectory)):
-            chargeState = fileDirectory.split("/")[-1]  # Extract charge state from the directory name
-            chargeState = re.sub(r'[^0-9]', '', chargeState)  # Remove non-numeric characters
-            CHARGE_STATE = int(chargeState)  # Convert to integer
-            main(csv_directory + "/" + fileDirectory)
+        if fileDirectory != "plots":
+            if os.path.isdir(os.path.join(FILE_DIRECTORY, fileDirectory)):
+                chargeState = fileDirectory.split("/")[-1]  # Extract charge state from the directory name
+                chargeState = re.sub(r'[^0-9]', '', chargeState)  # Remove non-numeric characters
+                CHARGE_STATE = int(chargeState)  # Convert to integer
+                main(FILE_DIRECTORY + "/" + fileDirectory)
